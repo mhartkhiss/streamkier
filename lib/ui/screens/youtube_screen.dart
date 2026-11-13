@@ -1,5 +1,6 @@
 import 'dart:collection';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:provider/provider.dart';
 import '../../providers/settings_provider.dart';
@@ -70,6 +71,7 @@ class _YouTubeScreenState extends State<YouTubeScreen> {
     super.initState();
     if (widget.isActive) {
       _hasActivated = true;
+      SystemChrome.setPreferredOrientations(const []);
     }
   }
 
@@ -78,6 +80,7 @@ class _YouTubeScreenState extends State<YouTubeScreen> {
     super.didUpdateWidget(oldWidget);
     if (widget.isActive != oldWidget.isActive) {
       if (widget.isActive) {
+        SystemChrome.setPreferredOrientations(const []);
         if (!_hasActivated) {
           setState(() => _hasActivated = true);
         } else {
@@ -87,6 +90,8 @@ class _YouTubeScreenState extends State<YouTubeScreen> {
           );
         }
       } else {
+        SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+        SystemChrome.setPreferredOrientations(const []);
         // Pause all playing videos, inline previews, and autoplay when leaving the YouTube tab
         // without calling global pauseTimers() (which would freeze PlayerScreen's WebView).
         _controller?.evaluateJavascript(
@@ -98,6 +103,23 @@ class _YouTubeScreenState extends State<YouTubeScreen> {
           ''',
         );
       }
+    }
+  }
+
+  void _toggleOrientation() {
+    final isLandscape = MediaQuery.orientationOf(context) == Orientation.landscape;
+    if (isLandscape) {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) SystemChrome.setPreferredOrientations(const []);
+      });
+    } else {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+      SystemChrome.setPreferredOrientations([
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
     }
   }
 
@@ -166,162 +188,172 @@ class _YouTubeScreenState extends State<YouTubeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isLandscape = MediaQuery.orientationOf(context) == Orientation.landscape;
+
     return Scaffold(
       backgroundColor: AppTheme.background,
-      appBar: AppBar(
-        titleSpacing: 12,
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: AppTheme.primary,
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
+      appBar: isLandscape
+          ? null
+          : AppBar(
+              titleSpacing: 12,
+              title: Row(
                 children: [
-                  Icon(Icons.smart_display_rounded, color: Colors.white, size: 16),
-                  SizedBox(width: 5),
-                  Text(
-                    'YOUTUBE',
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 1.0,
-                      color: Colors.white,
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primary,
+                      borderRadius: BorderRadius.circular(6),
                     ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: Colors.greenAccent.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.greenAccent.withValues(alpha: 0.3)),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.shield_rounded, color: Colors.greenAccent, size: 12),
-                  const SizedBox(width: 4),
-                  Selector<SettingsProvider, int>(
-                    selector: (_, s) => s.adsBlocked,
-                    builder: (_, adsBlocked, _) => Text(
-                      'Ad-Free ($adsBlocked)',
-                      style: const TextStyle(
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.greenAccent,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          ValueListenableBuilder<String?>(
-            valueListenable: _activeVideoIdNotifier,
-            builder: (_, activeVideoId, _) {
-              if (activeVideoId == null) return const SizedBox.shrink();
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: _isPureEmbedMode ? Colors.greenAccent : Colors.white,
-                    side: BorderSide(
-                      color: _isPureEmbedMode ? Colors.greenAccent : Colors.white24,
-                    ),
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                  ),
-                  icon: Icon(
-                    _isPureEmbedMode ? Icons.check_circle_rounded : Icons.bolt_rounded,
-                    size: 15,
-                  ),
-                  label: Text(
-                    _isPureEmbedMode ? 'Pure Mode' : 'Pure Player',
-                    style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
-                  ),
-                  onPressed: _togglePureEmbed,
-                ),
-              );
-            },
-          ),
-          IconButton(
-            tooltip: 'Back',
-            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
-            onPressed: () async {
-              if (_controller != null && await _controller!.canGoBack()) {
-                await _controller!.goBack();
-              }
-            },
-          ),
-          IconButton(
-            tooltip: 'Reload',
-            icon: const Icon(Icons.refresh_rounded, size: 20),
-            onPressed: () => _controller?.reload(),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // Quick Topic Pills
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-            child: Row(
-              children: _topics.map((topic) {
-                final isSelected = _selectedTopic == topic.label && !_isPureEmbedMode;
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _selectedTopic = topic.label;
-                        _isPureEmbedMode = false;
-                      });
-                      _loadUrl(topic.url);
-                    },
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 180),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: isSelected ? AppTheme.primary : AppTheme.surfaceLight,
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(
-                          color: isSelected ? AppTheme.primary : Colors.white10,
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            topic.icon,
-                            size: 13,
-                            color: isSelected ? Colors.white : AppTheme.textSecondary,
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.smart_display_rounded, color: Colors.white, size: 16),
+                        SizedBox(width: 5),
+                        Text(
+                          'YOUTUBE',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.0,
+                            color: Colors.white,
                           ),
-                          const SizedBox(width: 5),
-                          Text(
-                            topic.label,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                              color: isSelected ? Colors.white : AppTheme.textSecondary,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.greenAccent.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.greenAccent.withValues(alpha: 0.3)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.shield_rounded, color: Colors.greenAccent, size: 12),
+                        const SizedBox(width: 4),
+                        Selector<SettingsProvider, int>(
+                          selector: (_, s) => s.adsBlocked,
+                          builder: (_, adsBlocked, _) => Text(
+                            'Ad-Free ($adsBlocked)',
+                            style: const TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.greenAccent,
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
-                );
-              }).toList(),
+                ],
+              ),
+              actions: [
+                ValueListenableBuilder<String?>(
+                  valueListenable: _activeVideoIdNotifier,
+                  builder: (_, activeVideoId, _) {
+                    if (activeVideoId == null) return const SizedBox.shrink();
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: _isPureEmbedMode ? Colors.greenAccent : Colors.white,
+                          side: BorderSide(
+                            color: _isPureEmbedMode ? Colors.greenAccent : Colors.white24,
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                        ),
+                        icon: Icon(
+                          _isPureEmbedMode ? Icons.check_circle_rounded : Icons.bolt_rounded,
+                          size: 15,
+                        ),
+                        label: Text(
+                          _isPureEmbedMode ? 'Pure Mode' : 'Pure Player',
+                          style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
+                        ),
+                        onPressed: _togglePureEmbed,
+                      ),
+                    );
+                  },
+                ),
+                IconButton(
+                  tooltip: 'Rotate to Landscape',
+                  icon: const Icon(Icons.screen_rotation_rounded, size: 19),
+                  onPressed: _toggleOrientation,
+                ),
+                IconButton(
+                  tooltip: 'Back',
+                  icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
+                  onPressed: () async {
+                    if (_controller != null && await _controller!.canGoBack()) {
+                      await _controller!.goBack();
+                    }
+                  },
+                ),
+                IconButton(
+                  tooltip: 'Reload',
+                  icon: const Icon(Icons.refresh_rounded, size: 20),
+                  onPressed: () => _controller?.reload(),
+                ),
+              ],
             ),
-          ),
+      body: Column(
+        children: [
+          // Quick Topic Pills (Hidden in landscape so video gets full height)
+          if (!isLandscape)
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+              child: Row(
+                children: _topics.map((topic) {
+                  final isSelected = _selectedTopic == topic.label && !_isPureEmbedMode;
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _selectedTopic = topic.label;
+                          _isPureEmbedMode = false;
+                        });
+                        _loadUrl(topic.url);
+                      },
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: isSelected ? AppTheme.primary : AppTheme.surfaceLight,
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(
+                            color: isSelected ? AppTheme.primary : Colors.white10,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              topic.icon,
+                              size: 13,
+                              color: isSelected ? Colors.white : AppTheme.textSecondary,
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              topic.label,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                color: isSelected ? Colors.white : AppTheme.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
 
           ValueListenableBuilder<bool>(
             valueListenable: _isLoadingNotifier,
@@ -341,37 +373,50 @@ class _YouTubeScreenState extends State<YouTubeScreen> {
                 ? const Center(
                     child: CircularProgressIndicator(color: AppTheme.primary),
                   )
-                : InAppWebView(
-                    initialUrlRequest: URLRequest(url: WebUri(_homeUrl)),
-                    initialUserScripts: UnmodifiableListView([
-                      UserScript(
-                        source: AdBlockerService.youtubeBackgroundPlayScript,
-                        injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
-                        forMainFrameOnly: false,
-                        contentWorld: ContentWorld.PAGE,
-                      ),
-                      UserScript(
-                        source: AdBlockerService.youtubeAdBlockScript,
-                        injectionTime: UserScriptInjectionTime.AT_DOCUMENT_END,
-                        forMainFrameOnly: true,
-                        contentWorld: ContentWorld.PAGE,
-                      ),
-                    ]),
-                    initialSettings: InAppWebViewSettings(
-                      javaScriptEnabled: true,
-                      domStorageEnabled: true,
-                      databaseEnabled: true,
-                      mediaPlaybackRequiresUserGesture: false,
-                      allowsInlineMediaPlayback: true,
-                      supportMultipleWindows: false,
-                      javaScriptCanOpenWindowsAutomatically: false,
-                      useShouldInterceptRequest: false,
-                      contentBlockers: AdBlockerService.getContentBlockers(),
-                    ),
-                    onWebViewCreated: (controller) {
-                      _controller = controller;
-                    },
-                    onCreateWindow: (_, _) async => false,
+                : Stack(
+                    children: [
+                      InAppWebView(
+                        initialUrlRequest: URLRequest(url: WebUri(_homeUrl)),
+                        initialUserScripts: UnmodifiableListView([
+                          UserScript(
+                            source: AdBlockerService.youtubeBackgroundPlayScript,
+                            injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
+                            forMainFrameOnly: false,
+                            contentWorld: ContentWorld.PAGE,
+                          ),
+                          UserScript(
+                            source: AdBlockerService.youtubeAdBlockScript,
+                            injectionTime: UserScriptInjectionTime.AT_DOCUMENT_END,
+                            forMainFrameOnly: true,
+                            contentWorld: ContentWorld.PAGE,
+                          ),
+                        ]),
+                        initialSettings: InAppWebViewSettings(
+                          javaScriptEnabled: true,
+                          domStorageEnabled: true,
+                          databaseEnabled: true,
+                          mediaPlaybackRequiresUserGesture: false,
+                          allowsInlineMediaPlayback: true,
+                          supportMultipleWindows: false,
+                          javaScriptCanOpenWindowsAutomatically: false,
+                          useShouldInterceptRequest: false,
+                          contentBlockers: AdBlockerService.getContentBlockers(),
+                        ),
+                        onWebViewCreated: (controller) {
+                          _controller = controller;
+                        },
+                        onEnterFullscreen: (_) {
+                          SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+                          SystemChrome.setPreferredOrientations([
+                            DeviceOrientation.landscapeLeft,
+                            DeviceOrientation.landscapeRight,
+                          ]);
+                        },
+                        onExitFullscreen: (_) {
+                          SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+                          SystemChrome.setPreferredOrientations(const []);
+                        },
+                        onCreateWindow: (_, _) async => false,
                     shouldOverrideUrlLoading: (controller, navigationAction) async {
                       final uri = navigationAction.request.url;
                       if (uri == null) return NavigationActionPolicy.CANCEL;
@@ -409,11 +454,36 @@ class _YouTubeScreenState extends State<YouTubeScreen> {
                       _isLoadingNotifier.value = false;
                       if (url != null) _updateUrlTracking(url.toString());
                     },
-                    onUpdateVisitedHistory: (_, url, _) {
-                      if (url != null) {
-                        _updateUrlTracking(url.toString());
-                      }
-                    },
+                        onUpdateVisitedHistory: (_, url, _) {
+                          if (url != null) {
+                            _updateUrlTracking(url.toString());
+                          }
+                        },
+                      ),
+                      if (isLandscape)
+                        Positioned(
+                          top: 10,
+                          right: 12,
+                          child: SafeArea(
+                            child: GestureDetector(
+                              onTap: _toggleOrientation,
+                              child: Container(
+                                padding: const EdgeInsets.all(7),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.45),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(color: Colors.white24, width: 0.5),
+                                ),
+                                child: const Icon(
+                                  Icons.screen_rotation_rounded,
+                                  color: Colors.white70,
+                                  size: 18,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
           ),
         ],

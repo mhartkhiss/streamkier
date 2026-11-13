@@ -64,13 +64,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _isResolvingId = _item.effectiveTmdbId.isEmpty;
     _scheduleHideControls();
 
-    // Enable landscape and hide system status bars for immersive cinema mode
+    // Enable immersive cinema mode while keeping orientation unspecified (const [])
+    // so Android's sensor and native corner "Rotate to landscape" button work freely.
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    SystemChrome.setPreferredOrientations([
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-      DeviceOrientation.portraitUp,
-    ]);
+    SystemChrome.setPreferredOrientations(const []);
 
     // Record watch history and resolve TMDB ID before loading WebView if needed
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -107,13 +104,28 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   void dispose() {
     _hideControlsTimer?.cancel();
-    // Restore orientations and system bars
+    // Restore edge-to-edge UI and leave orientation unlocked (const [])
+    // so YouTube and other screens can rotate freely and show Android's rotate button.
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    SystemChrome.setPreferredOrientations([
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.portraitDown,
-    ]);
+    SystemChrome.setPreferredOrientations(const []);
     super.dispose();
+  }
+
+  void _toggleOrientation() {
+    _scheduleHideControls();
+    final isLandscape = MediaQuery.orientationOf(context) == Orientation.landscape;
+    if (isLandscape) {
+      SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+      // Unlock back to sensor after rotation settles so phone rotate button still appears
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) SystemChrome.setPreferredOrientations(const []);
+      });
+    } else {
+      SystemChrome.setPreferredOrientations([
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+    }
   }
 
   String _buildStreamUrl() {
@@ -146,10 +158,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     return Scaffold(
       backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          // The InAppWebView with Ad-blocking, DOM storage, and fast iframe pass-through
-          if (!_isResolvingId)
+      body: Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (_) => _revealControlsTemporarily(),
+        child: Stack(
+          children: [
+            // The InAppWebView with Ad-blocking, DOM storage, and fast iframe pass-through
+            if (!_isResolvingId)
             InAppWebView(
               initialUrlRequest: URLRequest(
                 url: WebUri(_buildStreamUrl()),
@@ -205,6 +220,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
               onWebViewCreated: (controller) {
                 _webViewController = controller;
                 controller.resumeTimers();
+              },
+              onEnterFullscreen: (_) {
+                SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+                SystemChrome.setPreferredOrientations([
+                  DeviceOrientation.landscapeLeft,
+                  DeviceOrientation.landscapeRight,
+                ]);
+              },
+              onExitFullscreen: (_) {
+                SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+                SystemChrome.setPreferredOrientations(const []);
               },
               onCreateWindow: (controller, createWindowAction) async {
                 // Reject opening new windows/tabs (e.g. ad popunders)
@@ -340,28 +366,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               ),
             ),
 
-          // Floating Toggle Controls Button (visible when controls are auto-hidden)
-          if (!_showControls)
-            Positioned(
-              top: 12,
-              left: 12,
-              child: SafeArea(
-                child: GestureDetector(
-                  onTap: _revealControlsTemporarily,
-                  child: Container(
-                    padding: const EdgeInsets.all(7),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.35),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.white12, width: 0.5),
-                    ),
-                    child: const Icon(Icons.menu_rounded, color: Colors.white60, size: 18),
-                  ),
-                ),
-              ),
-            ),
-
-          // Controls Overlay: Top Bar & Bottom Bar (Auto-hides after 4 seconds)
+          // Controls Overlay: Top Bar & Bottom Bar (Auto-hides after 4s, reappears on any screen tap)
           if (_showControls) ...[
             // Top Bar
             Positioned(
@@ -427,6 +432,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                 );
                               },
                             ),
+                          IconButton(
+                            icon: const Icon(Icons.screen_rotation_rounded, color: Colors.white),
+                            tooltip: 'Rotate Screen',
+                            onPressed: _toggleOrientation,
+                          ),
                           IconButton(
                             icon: const Icon(Icons.refresh, color: Colors.white),
                             onPressed: () {
@@ -529,6 +539,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             ),
           ],
         ],
+      ),
       ),
     );
   }

@@ -20,6 +20,9 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isLandscape = MediaQuery.orientationOf(context) == Orientation.landscape;
+    final hideChromeForYouTubeLandscape = _currentIndex == 2 && isLandscape;
+
     final screens = [
       const HomeScreen(),
       const SearchScreen(),
@@ -117,12 +120,14 @@ class _MainScreenState extends State<MainScreen> {
         index: _currentIndex,
         children: screens,
       ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          border: Border(
-            top: BorderSide(color: Colors.white.withValues(alpha: 0.07), width: 1),
-          ),
-        ),
+      bottomNavigationBar: hideChromeForYouTubeLandscape
+          ? null
+          : Container(
+              decoration: BoxDecoration(
+                border: Border(
+                  top: BorderSide(color: Colors.white.withValues(alpha: 0.07), width: 1),
+                ),
+              ),
         child: BottomNavigationBar(
           currentIndex: _currentIndex,
           onTap: (index) => setState(() => _currentIndex = index),
